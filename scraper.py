@@ -33,20 +33,20 @@ def parse_rss_feeds():
         feed = feedparser.parse(feed_url)
         for entry in feed.entries[:3]:
             briefing = {
-                'author': source_name,
-                'country': 'usa',
-                'flag': 'U',
-                'avatar': source_name[:2].upper(),
-                'role': 'Think Tank',
-                'type': 'academic',
-                'urgency': 'medium',
-                'title': entry.get('title', 'Sin titulo')[:200],
-                'quote': entry.get('summary', '')[:300],
-                'tags': 'Geopolitica',
-                'source': source_name,
-                'link': entry.get('link', ''),
-                'date': datetime.now().strftime('%Y-%m-%d')
-            }
+                    'Autor': source_name,
+                    'País': 'usa',
+                    'Bandera': 'U',
+                    'avatar': source_name[:2].upper(),
+                    'role': 'Think Tank',
+                    'type': 'academic',
+                    'urgency': 'medium',
+                    'title': entry.get('title', 'Sin titulo')[:200],
+                    'quote': entry.get('summary', '')[:300],
+                    'tags': 'Geopolitica',
+                    'source': source_name,
+                    'link': entry.get('link', ''),
+                    'date': datetime.now().strftime('%Y-%m-%d')
+                }
             briefings.append(briefing)
             print("  OK: " + briefing['title'][:50])
     return briefings
@@ -56,7 +56,7 @@ def save_to_supabase(briefings):
     count = 0
     for briefing in briefings:
         try:
-            url = SUPABASE_URL + '/rest/v1/briefings'
+            url = SUPABASE_URL + '/rest/v1/Informes'
             response = requests.post(url, json=briefing, headers=headers)
             if response.status_code in [201, 204]:
                 count += 1
