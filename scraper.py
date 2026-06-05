@@ -56,7 +56,7 @@ def save_to_supabase(briefings):
     count = 0
     for briefing in briefings:
         try:
-            url = SUPABASE_URL + '/rest/v1/Informes'
+            url = SUPABASE_URL + '/rest/v1/briefings'
             response = requests.post(url, json=briefing, headers=headers)
             if response.status_code in [201, 204]:
                 count += 1
