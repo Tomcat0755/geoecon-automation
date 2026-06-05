@@ -48,7 +48,7 @@ def parse_rss_feeds():
     'fecha': datetime.now().strftime('%Y-%m-%d')
 }
             briefings.append(briefing)
-            print("  OK: " + briefing['titulo'][:50])
+            print("  OK: " + briefing['texto del titulo'][:50])
     return briefings
 
 def save_to_supabase(briefings):
