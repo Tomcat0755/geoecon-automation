@@ -33,22 +33,22 @@ def parse_rss_feeds():
         feed = feedparser.parse(feed_url)
         for entry in feed.entries[:3]:
             briefing = {
-    'texto del autor': source_name,
-    'texto del país': 'usa',
+    'author': source_name,
+    'country': 'usa',
     'flag': 'U',
-    'texto del avatar': source_name[:2].upper(),
-    'texto de rol': 'Think Tank',
-    'escribe': 'academic',
-    'texto de urgencia': 'medium',
-    'texto del titulo': entry.get('title', 'Sin titulo')[:200],
-    'texto de la cita': entry.get('summary', '')[:300],
-    'etiquetas': 'Geopolitica',
-    'texto fuente': source_name,
-    'texto del enlace': entry.get('link', ''),
-    'fecha': datetime.now().strftime('%Y-%m-%d')
+    'avatar': source_name[:2].upper(),
+    'role': 'Think Tank',
+    'type': 'academic',
+    'urgency': 'medium',
+    'title': entry.get('title', 'Sin titulo')[:200],
+    'quote': entry.get('summary', '')[:300],
+    'tags': 'Geopolitica',
+    'source': source_name,
+    'link': entry.get('link', ''),
+    'date': datetime.now().strftime('%Y-%m-%d')
 }
             briefings.append(briefing)
-            print("  OK: " + briefing['texto del titulo'][:50])
+            print("  OK: " + briefing['title'][:50])
     return briefings
 
 def save_to_supabase(briefings):
