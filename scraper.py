@@ -32,21 +32,21 @@ def parse_rss_feeds():
         print("Procesando: " + source_name)
         feed = feedparser.parse(feed_url)
         for entry in feed.entries[:3]:
-            briefing = {
-                    'Autor': source_name,
-                    'País': 'usa',
-                    'Bandera': 'U',
-                    'avatar': source_name[:2].upper(),
-                    'role': 'Think Tank',
-                    'type': 'academic',
-                    'urgency': 'medium',
-                    'title': entry.get('title', 'Sin titulo')[:200],
-                    'quote': entry.get('summary', '')[:300],
-                    'tags': 'Geopolitica',
-                    'source': source_name,
-                    'link': entry.get('link', ''),
-                    'date': datetime.now().strftime('%Y-%m-%d')
-                }
+           briefing = {
+    'autor': source_name,
+    'pais': 'usa',
+    'bandera': 'U',
+    'avatar': source_name[:2].upper(),
+    'rol': 'Think Tank',
+    'tipo': 'academic',
+    'urgencia': 'medium',
+    'titulo': entry.get('title', 'Sin titulo')[:200],
+    'cita': entry.get('summary', '')[:300],
+    'etiquetas': 'Geopolitica',
+    'fuente': source_name,
+    'enlace': entry.get('link', ''),
+    'fecha': datetime.now().strftime('%Y-%m-%d')
+}
             briefings.append(briefing)
             print("  OK: " + briefing['title'][:50])
     return briefings
