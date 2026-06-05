@@ -1,44 +1,35 @@
 import os
 import feedparser
 import requests
+import json
 from datetime import datetime
-from supabase import create_client, Client
 
 print("=" * 50)
-print("INICIANDO SCRAPER")
+print("INICIANDO SCRAPER - GeoEcon Automation")
 print("=" * 50)
 
 # ===== CONFIGURACIÓN =====
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
 
-# Debug: Verificar variables
-print(f"\n🔍 Verificando variables de entorno:")
-print(f"  SUPABASE_URL existe: {'SÍ' if SUPABASE_URL else 'NO'}")
-print(f"  SUPABASE_KEY existe: {'SÍ' if SUPABASE_KEY else 'NO'}")
-
-if SUPABASE_URL:
-    print(f"  SUPABASE_URL (primeros 30 chars): {SUPABASE_URL[:30]}...")
-if SUPABASE_KEY:
-    print(f"  SUPABASE_KEY (primeros 30 chars): {SUPABASE_KEY[:30]}...")
+print(f"\n🔍 Verificando variables:")
+print(f"  SUPABASE_URL: {'✓ Configurada' if SUPABASE_URL else '✗ NO configurada'}")
+print(f"  SUPABASE_KEY: {'✓ Configurada' if SUPABASE_KEY else '✗ NO configurada'}")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    print("\n❌ ERROR: Las variables de entorno no están configuradas")
-    print("  Verifica que los secrets en GitHub estén correctamente nombrados:")
-    print("  - SUPABASE_URL")
-    print("  - SUPABASE_KEY")
-    raise Exception("Faltan variables de entorno de Supabase")
+    print("\n❌ ERROR: Faltan variables de entorno")
+    exit(1)
+
+# Headers para la API de Supabase
+headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': f'Bearer {SUPABASE_KEY}',
+    'Content-Type': 'application/json',
+    'Prefer': 'return=minimal'
+}
 
 print(f"\n✅ Variables verificadas correctamente")
-
-# Inicializar cliente de Supabase
-print(f"\n🔌 Conectando a Supabase...")
-try:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    print("✅ Conexión exitosa a Supabase")
-except Exception as e:
-    print(f"❌ Error al conectar: {e}")
-    raise
+print(f"🔌 Conectando a: {SUPABASE_URL[:40]}...")
 
 # ===== FUENTES DE DATOS =====
 RSS_FEEDS = {
@@ -48,23 +39,22 @@ RSS_FEEDS = {
     'CFR': 'https://www.cfr.org/rss.xml',
     'Carnegie': 'https://carnegieendowment.org/rss?lang=en',
 }
+
 # ===== FUNCIONES =====
 def parse_rss_feeds():
-    """Extrae artículos de los RSS de think tanks"""
+    """Extrae artículos de los RSS"""
     briefings = []
     
     for source_name, feed_url in RSS_FEEDS.items():
         print(f"\n📰 Procesando {source_name}...")
-        try:
-            feed = feedparser.parse(feed_url)
-            print(f"  ✓ Encontrados {len(feed.entries)} artículos")
+        try:            feed = feedparser.parse(feed_url)
+            print(f"  ✓ {len(feed.entries)} artículos encontrados")
             
-            for entry in feed.entries[:5]:  # Solo los 5 más recientes
-                country = 'usa' if 'CSIS' in source_name or 'Brookings' in source_name or 'CFR' in source_name else 'eu'
-                flag = '🇺🇸' if country == 'usa' else '🇪🇺'
+            for entry in feed.entries[:5]:
+                country = 'usa' if any(x in source_name for x in ['CSIS', 'Brookings', 'CFR']) else 'eu'
+                flag = '🇺' if country == 'usa' else '🇪🇺'
                 
                 summary = entry.get('summary', entry.get('description', ''))
-                tags = ['Geopolítica', 'Economía']
                 
                 briefing = {
                     'author': source_name,
@@ -75,56 +65,62 @@ def parse_rss_feeds():
                     'type': 'academic',
                     'urgency': 'medium',
                     'title': entry.get('title', 'Sin título')[:200],
-                    'quote': summary[:300] + '...' if len(summary) > 300 else summary,
-                    'tags': ','.join(tags),
+                    'quote': (summary[:300] + '...') if len(summary) > 300 else summary,
+                    'tags': 'Geopolítica,Economía',
                     'source': source_name,
                     'link': entry.get('link', ''),
                     'date': datetime.now().strftime('%Y-%m-%d')
                 }
                 briefings.append(briefing)
-                print(f"    • {briefing['title'][:50]}...")
+                print(f"    • {briefing['title'][:60]}...")
         except Exception as e:
-            print(f"  ❌ Error procesando {source_name}: {e}")
+            print(f"  ❌ Error: {e}")
     
     return briefings
 
 def save_to_supabase(briefings):
-    """Guarda los briefings en Supabase"""
-    print(f"\n💾 Guardando {len(briefings)} briefings en Supabase...")
+    """Guarda usando API REST"""
+    print(f"\n💾 Guardando {len(briefings)} briefings...")
     
     count = 0
     for briefing in briefings:
         try:
-            existing = supabase.table('briefings').select('id').eq('title', briefing['title']).eq('date', briefing['date']).execute()
-                        if not existing.data:
-                result = supabase.table('briefings').insert(briefing).execute()
-                count += 1
-                print(f"  ✓ Insertado: {briefing['title'][:50]}...")
+            # Verificar si existe
+            check_url = f"{SUPABASE_URL}/rest/v1/briefings"
+            check_params = f"select=id&title=eq.{briefing['title']}&date=eq.{briefing['date']}"
+            check_response = requests.get(f"{check_url}?{check_params}", headers=headers)
+            
+            if check_response.status_code == 200 and len(check_response.json()) == 0:
+                # Insertar nuevo
+                insert_url = f"{SUPABASE_URL}/rest/v1/briefings"
+                insert_response = requests.post(insert_url, json=briefing, headers=headers)
+                
+                if insert_response.status_code in [201, 204]:
+                    count += 1                    print(f"  ✓ Guardado: {briefing['title'][:50]}...")
+                else:
+                    print(f"  ⚠ Error {insert_response.status_code}: {briefing['title'][:50]}")
             else:
                 print(f"  ⊘ Ya existe: {briefing['title'][:50]}...")
         except Exception as e:
-            print(f"  ❌ Error guardando: {e}")
+            print(f"  ❌ Error: {e}")
     
     print(f"\n✅ {count} nuevos briefings guardados")
 
 def main():
-    """Función principal"""
     print("\n" + "=" * 50)
     print("🤖 GeoEcon Automation Robot")
-    print(f"📅 Ejecutando en: {datetime.now()}")
+    print(f"📅 {datetime.now()}")
     print("=" * 50)
     
-    # 1. Extraer datos de RSS
     briefings = parse_rss_feeds()
     
-    # 2. Guardar en Supabase
     if briefings:
         save_to_supabase(briefings)
     else:
-        print("\n⚠️ No se encontraron briefings para guardar")
+        print("\n⚠️ No se encontraron briefings")
     
     print("\n" + "=" * 50)
-    print("✅ Ejecución completada")
+    print("✅ EJECUCIÓN COMPLETADA")
     print("=" * 50)
 
 if __name__ == "__main__":
