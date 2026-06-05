@@ -4,123 +4,127 @@ import requests
 from datetime import datetime
 from supabase import create_client, Client
 
+print("=" * 50)
+print("INICIANDO SCRAPER")
+print("=" * 50)
+
 # ===== CONFIGURACIÓN =====
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
 
-# Debug: Imprimir si las variables existen
-print(f"SUPABASE_URL configurada: {'SÍ' if SUPABASE_URL else 'NO'}")
-print(f"SUPABASE_KEY configurada: {'SÍ' if SUPABASE_KEY else 'NO'}")
+# Debug: Verificar variables
+print(f"\n🔍 Verificando variables de entorno:")
+print(f"  SUPABASE_URL existe: {'SÍ' if SUPABASE_URL else 'NO'}")
+print(f"  SUPABASE_KEY existe: {'SÍ' if SUPABASE_KEY else 'NO'}")
+
+if SUPABASE_URL:
+    print(f"  SUPABASE_URL (primeros 30 chars): {SUPABASE_URL[:30]}...")
+if SUPABASE_KEY:
+    print(f"  SUPABASE_KEY (primeros 30 chars): {SUPABASE_KEY[:30]}...")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise Exception("❌ Las variables de entorno SUPABASE_URL o SUPABASE_KEY no están configuradas")
+    print("\n❌ ERROR: Las variables de entorno no están configuradas")
+    print("  Verifica que los secrets en GitHub estén correctamente nombrados:")
+    print("  - SUPABASE_URL")
+    print("  - SUPABASE_KEY")
+    raise Exception("Faltan variables de entorno de Supabase")
+
+print(f"\n✅ Variables verificadas correctamente")
 
 # Inicializar cliente de Supabase
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+print(f"\n🔌 Conectando a Supabase...")
+try:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    print("✅ Conexión exitosa a Supabase")
+except Exception as e:
+    print(f"❌ Error al conectar: {e}")
+    raise
+
+# ===== FUENTES DE DATOS =====
+RSS_FEEDS = {
+    'CSIS': 'https://www.csis.org/rss.xml',
     'Brookings': 'https://www.brookings.edu/feed/',
     'Chatham House': 'https://www.chathamhouse.org/rss.xml',
     'CFR': 'https://www.cfr.org/rss.xml',
     'Carnegie': 'https://carnegieendowment.org/rss?lang=en',
 }
-
 # ===== FUNCIONES =====
 def parse_rss_feeds():
     """Extrae artículos de los RSS de think tanks"""
     briefings = []
     
     for source_name, feed_url in RSS_FEEDS.items():
-        print(f"Procesando {source_name}...")
-        feed = feedparser.parse(feed_url)
-        
-        for entry in feed.entries[:5]:  # Solo los 5 más recientes de cada fuente
-            # Determinar país/región basado en la fuente
-            country = 'usa' if 'CSIS' in source_name or 'Brookings' in source_name or 'CFR' in source_name else 'eu'
-            flag = '🇺' if country == 'usa' else '🇪🇺'
+        print(f"\n📰 Procesando {source_name}...")
+        try:
+            feed = feedparser.parse(feed_url)
+            print(f"  ✓ Encontrados {len(feed.entries)} artículos")
             
-            # Extraer tags del resumen (simplificado)
-            summary = entry.get('summary', '')
-            tags = ['Geopolítica', 'Economía']
-            
-            briefing = {
-                'author': source_name,
-                'country': country,
-                'flag': flag,
-                'avatar': source_name[:2].upper(),
-                'role': f'Think Tank - {source_name}',
-                'type': 'academic',
-                'urgency': 'medium',
-                'title': entry.get('title', 'Sin título'),
-                'quote': summary[:300] + '...' if len(summary) > 300 else summary,                'tags': ','.join(tags),
-                'source': source_name,
-                'link': entry.get('link', ''),
-                'date': datetime.now().strftime('%Y-%m-%d')
-            }
-            briefings.append(briefing)
+            for entry in feed.entries[:5]:  # Solo los 5 más recientes
+                country = 'usa' if 'CSIS' in source_name or 'Brookings' in source_name or 'CFR' in source_name else 'eu'
+                flag = '🇺🇸' if country == 'usa' else '🇪🇺'
+                
+                summary = entry.get('summary', entry.get('description', ''))
+                tags = ['Geopolítica', 'Economía']
+                
+                briefing = {
+                    'author': source_name,
+                    'country': country,
+                    'flag': flag,
+                    'avatar': source_name[:2].upper(),
+                    'role': f'Think Tank - {source_name}',
+                    'type': 'academic',
+                    'urgency': 'medium',
+                    'title': entry.get('title', 'Sin título')[:200],
+                    'quote': summary[:300] + '...' if len(summary) > 300 else summary,
+                    'tags': ','.join(tags),
+                    'source': source_name,
+                    'link': entry.get('link', ''),
+                    'date': datetime.now().strftime('%Y-%m-%d')
+                }
+                briefings.append(briefing)
+                print(f"    • {briefing['title'][:50]}...")
+        except Exception as e:
+            print(f"  ❌ Error procesando {source_name}: {e}")
     
     return briefings
 
 def save_to_supabase(briefings):
     """Guarda los briefings en Supabase"""
-    print(f"Guardando {len(briefings)} briefings en Supabase...")
+    print(f"\n💾 Guardando {len(briefings)} briefings en Supabase...")
     
+    count = 0
     for briefing in briefings:
-        # Verificar si ya existe (por título y fecha)
-        existing = supabase.table('briefings').select('id').eq('title', briefing['title']).eq('date', briefing['date']).execute()
-        
-        if not existing.data:
-            # Insertar nuevo briefing
-            result = supabase.table('briefings').insert(briefing).execute()
-            print(f"✓ Insertado: {briefing['title'][:50]}...")
-        else:
-            print(f"⊘ Ya existe: {briefing['title'][:50]}...")
-
-def update_keywords():
-    """Genera keywords basadas en los briefings recientes"""
-    print("Actualizando keywords...")
+        try:
+            existing = supabase.table('briefings').select('id').eq('title', briefing['title']).eq('date', briefing['date']).execute()
+                        if not existing.data:
+                result = supabase.table('briefings').insert(briefing).execute()
+                count += 1
+                print(f"  ✓ Insertado: {briefing['title'][:50]}...")
+            else:
+                print(f"  ⊘ Ya existe: {briefing['title'][:50]}...")
+        except Exception as e:
+            print(f"  ❌ Error guardando: {e}")
     
-    # Obtener briefings de hoy
-    today = datetime.now().strftime('%Y-%m-%d')
-    recent = supabase.table('briefings').select('title,tags').eq('date', today).execute()
-    
-    # Contar frecuencia de palabras (simplificado)
-    word_count = {}
-    for item in recent.data:
-        words = item['title'].split() + item['tags'].split(',')
-        for word in words:
-            word = word.strip().lower()
-            if len(word) > 4:  # Solo palabras con más de 4 letras
-                word_count[word] = word_count.get(word, 0) + 1
-    
-    # Guardar top 10 keywords
-    top_keywords = sorted(word_count.items(), key=lambda x: x[1], reverse=True)[:10]
-    
-    for word, count in top_keywords:
-        supabase.table('keywords').insert({
-            'text': word.capitalize(),
-            'category': 'trending' if count > 3 else '',
-            'count': count,
-            'date': today        }).execute()
-    
-    print(f"✓ {len(top_keywords)} keywords actualizadas")
+    print(f"\n✅ {count} nuevos briefings guardados")
 
 def main():
     """Función principal"""
-    print("=" * 50)
-    print("GeoEcon Automation Robot")
-    print(f"Ejecutando en: {datetime.now()}")
+    print("\n" + "=" * 50)
+    print("🤖 GeoEcon Automation Robot")
+    print(f"📅 Ejecutando en: {datetime.now()}")
     print("=" * 50)
     
     # 1. Extraer datos de RSS
     briefings = parse_rss_feeds()
     
     # 2. Guardar en Supabase
-    save_to_supabase(briefings)
+    if briefings:
+        save_to_supabase(briefings)
+    else:
+        print("\n⚠️ No se encontraron briefings para guardar")
     
-    # 3. Actualizar keywords
-    update_keywords()
-    
-    print("=" * 50)
-    print("✓ Ejecución completada")
+    print("\n" + "=" * 50)
+    print("✅ Ejecución completada")
     print("=" * 50)
 
 if __name__ == "__main__":
