@@ -8,12 +8,15 @@ from supabase import create_client, Client
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
 
+# Debug: Imprimir si las variables existen
+print(f"SUPABASE_URL configurada: {'SÍ' if SUPABASE_URL else 'NO'}")
+print(f"SUPABASE_KEY configurada: {'SÍ' if SUPABASE_KEY else 'NO'}")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise Exception("❌ Las variables de entorno SUPABASE_URL o SUPABASE_KEY no están configuradas")
+
 # Inicializar cliente de Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# ===== FUENTES DE DATOS =====
-RSS_FEEDS = {
-    'CSIS': 'https://www.csis.org/rss.xml',
     'Brookings': 'https://www.brookings.edu/feed/',
     'Chatham House': 'https://www.chathamhouse.org/rss.xml',
     'CFR': 'https://www.cfr.org/rss.xml',
