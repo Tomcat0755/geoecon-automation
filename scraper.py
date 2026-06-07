@@ -1,79 +1,104 @@
 import os
-import feedparser
 import requests
+import feedparser
 from datetime import datetime
-
-print("INICIANDO RASPADOR")
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("ERROR: Faltan variables")
-    exit(1)
+def get_headers():
+    return {
+        'apikey': SUPABASE_KEY,
+        'Authorization': f'Bearer {SUPABASE_KEY}',
+        'Content-Type': 'application/json'
+    }
 
-print("Variables Vale")
+def fetch_rss(url):
+    try:
+        feed = feedparser.parse(url)
+        articles = []
+        for entry in feed.entries[:3]: # Solo los 3 más recientes
+            link = entry.get('link', '')
+            title = entry.get('title', 'Sin título')
+            summary = entry.get('summary', entry.get('description', ''))
+            # Limpiar HTML del resumen
+            import re
+            summary = re.sub('<[^<]+>', '', summary)[:250]
+            
+            published = entry.get('published', '')
+            try:
+                date_obj = datetime.strptime(published, '%a, %d %b %Y %H:%M:%S %Z')
+                date_str = date_obj.strftime('%Y-%m-%d')
+            except:
+                date_str = datetime.now().strftime('%Y-%m-%d')
 
-headers = {
-    'apikey': SUPABASE_KEY,
-    'Authorization': 'Bearer ' + SUPABASE_KEY,
-    'Content-Type': 'application/json'
-}
+            articles.append({
+                'title': title,
+                'quote': summary,
+                'link': link,
+                'date': date_str,
+                'source': url.split('/')[2],
+                'urgency': 'medium'
+            })
+        return articles
+    except Exception as e:
+        print(f"Error fetching {url}: {e}")
+        return []
 
-RSS_FEEDS = {
-    'CSIS': 'https://www.csis.org/rss.xml',
-    'Brookings': 'https://www.brookings.edu/feed/',
-    'Chatham House': 'https://www.chathamhouse.org/rss.xml',
-}
+def save_to_supabase(articles):
+    if not articles:
+        print("No articles to save.")
+        return
+    
+    url = f"{SUPABASE_URL}/rest/v1/briefings"
+    headers = get_headers()
+    
+    # Mapear campos a los nombres exactos de tu tabla en Supabase
+    payload = []
+    for art in articles:
+        payload.append({
+            'author': art['source'],
+            'country': 'usa', # Default, el scraper puede mejorarse para detectar país
+            'flag': '🇸',
+            'avatar': art['source'][:2].upper(),
+            'role': 'Think Tank',
+            'type': 'thinktank',
+            'urgency': art['urgency'],
+            'title': art['title'],
+            'quote': art['quote'],
+            'tags': 'Geopolítica, Análisis',
+            'source': art['source'],
+            'link': art['link'],
+            'date': art['date']
+        })
 
-def parse_rss_feeds():
-    briefings = []
-    for source_name, feed_url in RSS_FEEDS.items():
-        print("Procesando: " + source_name)
-        feed = feedparser.parse(feed_url)
-        for entry in feed.entries[:3]:
-            briefing = {
-    'author': source_name,
-    'country': 'usa',
-    'flag': 'U',
-    'avatar': source_name[:2].upper(),
-    'role': 'Think Tank',
-    'type': 'academic',
-    'urgency': 'medium',
-    'title': entry.get('title', 'Sin titulo')[:200],
-    'quote': entry.get('summary', '')[:300],
-    'tags': 'Geopolitica',
-    'source': source_name,
-    'link': entry.get('link', ''),
-    'date': datetime.now().strftime('%Y-%m-%d')
-}
-            briefings.append(briefing)
-            print("  OK: " + briefing['title'][:50])
-    return briefings
-
-def save_to_supabase(briefings):
-    print("Guardando " + str(len(briefings)) + " informes...")
-    count = 0
-    for briefing in briefings:
-        try:
-            url = SUPABASE_URL + '/rest/v1/briefings'
-            response = requests.post(url, json=briefing, headers=headers)
-            print("  Status: " + str(response.status_code))
-            if response.status_code in [201, 204]:
-                count += 1
-                print("  OK guardado")
-            else:
-                print("  ERROR response: " + response.text[:100])
-        except Exception as e:
-            print("  ERROR: " + str(e))
-    print("Total guardados: " + str(count))
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code in [200, 201]:
+        print(f"✅ Guardados {len(payload)} artículos correctamente.")
+    else:
+        print(f"❌ Error al guardar: {response.status_code} - {response.text}")
 
 def main():
-    print("Robot de Automatizacion GeoEcon")
-    briefings = parse_rss_feeds()
-    if briefings:
-        save_to_supabase(briefings)
-    print("COMPLETADO")
+    print(" Iniciando raspado de GeoEcon...")
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("❌ Faltan credenciales de Supabase.")
+        return
+
+    rss_feeds = [
+        'https://www.csis.org/rss.xml',
+        'https://www.brookings.edu/feed/',
+        'https://www.chathamhouse.org/rss.xml'
+    ]
+
+    all_articles = []
+    for feed_url in rss_feeds:
+        print(f"📡 Procesando: {feed_url}")
+        articles = fetch_rss(feed_url)
+        all_articles.extend(articles)
+
+    print(f"📦 Total de artículos extraídos: {len(all_articles)}")
+    save_to_supabase(all_articles)
+    print("✅ Completado.")
 
 if __name__ == "__main__":
     main()
